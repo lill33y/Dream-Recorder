@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}链接无效 — 梦境记录{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>链接无效或已过期</h1>
+  <p class="muted">请重新在「忘记密码」里申请一封邮件。</p>
+  <p><a class="btn" href="{{ url_for('forgot_password') }}">忘记密码</a></p>
+</div>
+{% endblock %}

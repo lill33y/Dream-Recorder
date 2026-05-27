@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}更改昵称 — 梦境记录{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>更改昵称</h1>
+  <p class="muted">当前账号：<strong>{{ email }}</strong></p>
+  <p class="muted">保存后将返回个人主页；留空则使用邮箱 @ 前面的部分作为昵称。</p>
+  <form method="post" action="{{ url_for('nickname') }}" class="stack-form">
+    <p><label for="nickname">新昵称<br><input type="text" id="nickname" name="nickname" value="{{ current_nick }}" maxlength="24" autocomplete="nickname" placeholder="例如：小星"></label></p>
+    <button type="submit">保存并返回</button>
+    <a class="btn secondary" href="{{ url_for('me') }}">取消</a>
+  </form>
+</div>
+{% endblock %}

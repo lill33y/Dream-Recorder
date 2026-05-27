@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}梦境详情 #{{ dream['id'] }}{% endblock %}
+{% block body %}
+<p><a href="{{ url_for('me') }}">← 返回个人主页</a></p>
+<div class="card">
+  <div class="dream-detail-meta">
+    <span class="muted">做梦日：<strong>{{ dream['dream_on'] }}</strong></span>
+    <span class="muted">记录于：{{ dream['created_at']|localtime }}</span>
+    <span class="badge-color"><span class="badge-dot" style="background:{{ dream['dream_color'] }};"></span>本条颜色</span>
+  </div>
+  <div style="white-space: pre-wrap; font-size: 1.02rem;">{{ dream['content'] }}</div>
+  <button type="button" id="btn-analyze" class="secondary">AI 分析</button>
+  <div id="analysis-box" class="analysis-box" role="status"></div>
+</div>
+
+<script>
+(function () {
+  var box = document.getElementById('analysis-box');
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+  function listSection(title, items) {
+    if (!items || !items.length) return '';
+    var lis = items.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
+    return '<h3>' + esc(title) + '</h3><ul>' + lis + '</ul>';
+  }
+  document.getElementById('btn-analyze').addEventListener('click', function () {
+    box.textContent = '分析中…';
+    box.classList.add('visible');
+    fetch('{{ url_for("analyze_dream") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dream_id: {{ dream['id'] }} })
+    })
+      .then(function (r) {
+        return r.json().then(function (data) {
+          return { ok: r.ok, status: r.status, data: data };
+        });
+      })
+      .then(function (res) {
+        var data = res.data;
+        if (!res.ok || data.error) {
+          box.textContent = data.error || ('HTTP ' + (res.status || ''));
+          return;
+        }
+        var overview = data.overview || data.summary || '';
+        var symbols = data.symbols || [];
+        var emotions = data.emotions || '';
+        var suggestions = data.suggestions || [];
+        var bits = [];
+        if (data.provider) bits.push(data.provider);
+        if (data.model) bits.push('模型：' + data.model);
+        var meta = bits.join(' · ');
+        var html = '';
+        html += '<h3>整体解读</h3><p>' + esc(overview) + '</p>';
+        html += listSection('意象与象征（开放解读）', symbols);
+        html += '<h3>情绪与内在状态</h3><p>' + esc(emotions) + '</p>';
+        html += listSection('自我关照与记录提示', suggestions);
+        html += '<h3>主题与情绪标签</h3><p>主题：' + esc((data.themes || []).join('、')) + '<br>情绪倾向：' + esc(data.mood || '') + '</p>';
+        html += '<h3>原文摘录</h3><p>' + esc(data.snippet || '') + '</p>';
+        if (meta) html += '<p class="muted"><em>' + esc(meta) + '</em></p>';
+        box.innerHTML = html;
+      })
+      .catch(function (e) { box.textContent = '请求失败：' + e; });
+  });
+})();
+</script>
+{% endblock %}

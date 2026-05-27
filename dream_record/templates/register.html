@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}注册 — 梦境记录{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>注册</h1>
+  <p class="muted">每个邮箱只能注册一个账号。将向你的邮箱发送 6 位验证码。生产环境请在 .env 中配置 <strong>RESEND_API_KEY</strong> 与 <strong>RESEND_FROM</strong>（或配置 SMTP_HOST 等）；未配置时验证码只会出现在运行本程序的终端日志里。</p>
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ url_for('register') }}" class="stack-form">
+    <p><label>邮箱<br><input type="email" name="email" required autocomplete="email"></label></p>
+    <button type="submit">发送验证码</button>
+  </form>
+  <p class="link-row">已有账号？<a href="{{ url_for('login') }}">去登录</a></p>
+</div>
+{% endblock %}

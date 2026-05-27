@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block title %}{{ current_user.display }} — 个人主页{% endblock %}
+{% block body %}
+<div class="card profile-head">
+  <img class="avatar-lg" id="avatar-lg" src="{{ avatar_large }}" alt="头像" width="88" height="88">
+  <div>
+    <h1 style="margin-bottom:0.2rem;">{{ current_user.display }}</h1>
+    <p class="muted" style="margin:0 0 0.35rem;">个人主页</p>
+    <p class="muted" style="margin:0 0 0.65rem;">{{ current_user.email }}</p>
+    <p style="margin:0 0 0.65rem;">
+      <a class="btn secondary" href="{{ url_for('nickname') }}" style="margin-top:0;">更改昵称</a>
+    </p>
+    <form method="post" action="{{ url_for('upload_avatar') }}" enctype="multipart/form-data" class="stack-form" style="margin:0;">
+      <label class="file-btn">更换头像<input type="file" name="file" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp" onchange="if (this.files && this.files.length) this.form.submit();"></label>
+    </form>
+    <p class="hint" style="margin-top:0.35rem;">支持 jpg / png / gif / webp。上传结果会在页面上方提示；头像带版本参数可避免缓存旧图。</p>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem;">
+  <h2 style="margin-top:0;">历史记录</h2>
+  <p class="muted" style="margin-top:0;">在首页写好新梦后会出现在这里；点按进入全文与 AI 分析。列表时间为「做梦日」与「记录时间」（{{ display_tz_name }}，可由环境变量 <code>APP_TIMEZONE</code> 调整）。</p>
+  {% if dreams %}
+  <div class="dream-list">
+    {% for d in dreams %}
+    <a class="dream-row" href="{{ url_for('dream_detail', dream_id=d['id']) }}" style="--row-color: {{ d['dream_color'] }};">
+      <span class="dream-swatch" aria-hidden="true"></span>
+      <span class="dream-preview">{{ d['content']|replace('\n', ' ')|truncate(80, True) }}</span>
+      <span class="dream-date">{{ d.get('dream_on', '') }} · {{ d['created_at']|localtime }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">还没有记录。去<a href="{{ url_for('index') }}">首页</a>写第一条吧。</p>
+  {% endif %}
+</div>
+
+<div class="card dream-cal-wrap" style="margin-top:1rem;">
+  <h2 style="margin-top:0;">梦境颜色日历</h2>
+  <p class="muted" style="margin-top:0;">格子背景按当天梦境颜色等比例铺开；同一天多条梦会拼成条纹。点击有梦的日子可打开当天第一条详情。</p>
+  <div class="cal-toolbar">
+    <div class="cal-view-btns">
+      <button type="button" class="secondary cal-view-btn" data-view="week">周视图</button>
+      <button type="button" class="secondary cal-view-btn is-active" data-view="month">月视图</button>
+      <button type="button" class="secondary cal-view-btn" data-view="year">年视图</button>
+    </div>
+    <div class="cal-nav">
+      <button type="button" class="secondary" id="cal-prev">←</button>
+      <span id="cal-label" class="cal-label"></span>
+      <button type="button" class="secondary" id="cal-next">→</button>
+    </div>
+  </div>
+  <div id="cal-root"></div>
+</div>
+
+<p class="hint">邮件发信：设置环境变量 <code>SMTP_HOST</code>、<code>SMTP_PORT</code>、<code>SMTP_USER</code>、<code>SMTP_PASSWORD</code>、<code>SMTP_FROM</code>；重置密码链接依赖 <code>BASE_URL</code>（默认同请求域名）。</p>
+
+<script id="cal-data" type="application/json">{{ calendar_by_day|tojson }}</script>
+<script>
+(function () {
+  var raw = document.getElementById('cal-data');
+  var CAL = [];
+  try { CAL = JSON.parse(raw.textContent || '[]'); } catch (e) {}
+  var DAY_MAP = {};
+  CAL.forEach(function (d) { DAY_MAP[d.day] = d.entries || []; });
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function ymd(y, m1, d) { return y + '-' + pad(m1) + '-' + pad(d); }
+  function parseYmd(s) {
+    var p = (s || '').split('-');
+    return { y: +p[0], m: +p[1], d: +p[2] };
+  }
+  function daysInMonth(y, m1) { return new Date(y, m1, 0).getDate(); }
+  function weekdayMon0(y, m1, d) {
+    var w = new Date(y, m1 - 1, d).getDay();
+    return w === 0 ? 6 : w - 1;
+  }
+  function stripeBg(entries) {
+    if (!entries || !entries.length) return 'transparent';
+    var colors = entries.map(function (e) { return e.color; });
+    var n = colors.length;
+    var parts = [];
+    for (var i = 0; i < n; i++) {
+      var a = ((100 * i) / n).toFixed(4);
+      var b = ((100 * (i + 1)) / n).toFixed(4);
+      parts.push(colors[i] + ' ' + a + '% ' + b + '%');
+    }
+    return 'linear-gradient(90deg, ' + parts.join(', ') + ')';
+  }
+
+  var anchorStr = {{ calendar_today|tojson }};
+  var ap = parseYmd(anchorStr);
+  var anchor = new Date(ap.y, ap.m - 1, ap.d, 12, 0, 0);
+  var view = 'month';
+
+  function mondayOfWeek(d) {
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0);
+    var w = x.getDay();
+    var diff = w === 0 ? -6 : 1 - w;
+    x.setDate(x.getDate() + diff);
+    return x;
+  }
+
+  function setView(v) {
+    view = v;
+    document.querySelectorAll('.cal-view-btn').forEach(function (b) {
+      b.classList.toggle('is-active', b.getAttribute('data-view') === v);
+    });
+    render();
+  }
+  document.querySelectorAll('.cal-view-btn').forEach(function (b) {
+    b.addEventListener('click', function () { setView(b.getAttribute('data-view')); });
+  });
+
+  document.getElementById('cal-prev').addEventListener('click', function () {
+    if (view === 'month') anchor.setMonth(anchor.getMonth() - 1);
+    else if (view === 'week') anchor.setDate(anchor.getDate() - 7);
+    else anchor.setFullYear(anchor.getFullYear() - 1);
+    render();
+  });
+  document.getElementById('cal-next').addEventListener('click', function () {
+    if (view === 'month') anchor.setMonth(anchor.getMonth() + 1);
+    else if (view === 'week') anchor.setDate(anchor.getDate() + 7);
+    else anchor.setFullYear(anchor.getFullYear() + 1);
+    render();
+  });
+
+  function render() {
+    var root = document.getElementById('cal-root');
+    var label = document.getElementById('cal-label');
+    root.innerHTML = '';
+    var y = anchor.getFullYear();
+    var m1 = anchor.getMonth() + 1;
+    if (view === 'month') {
+      label.textContent = y + '年' + m1 + '月';
+      var firstWd = weekdayMon0(y, m1, 1);
+      var dim = daysInMonth(y, m1);
+      var dow = ['一', '二', '三', '四', '五', '六', '日'];
+      var grid = document.createElement('div');
+      grid.className = 'cal-grid-month';
+      dow.forEach(function (t) {
+        var h = document.createElement('div');
+        h.className = 'cal-dow';
+        h.textContent = t;
+        grid.appendChild(h);
+      });
+      for (var i = 0; i < firstWd; i++) {
+        var e = document.createElement('div');
+        e.className = 'cal-cell cal-cell-muted';
+        grid.appendChild(e);
+      }
+      for (var d = 1; d <= dim; d++) {
+        var key = ymd(y, m1, d);
+        var cell = document.createElement('div');
+        cell.className = 'cal-cell';
+        var ent = DAY_MAP[key] || [];
+        var strip = document.createElement('div');
+        strip.className = 'cal-cell-strip';
+        strip.style.background = stripeBg(ent);
+        cell.appendChild(strip);
+        var num = document.createElement('span');
+        num.className = 'cal-cell-num';
+        num.textContent = d;
+        cell.appendChild(num);
+        if (ent.length) {
+          cell.classList.add('cal-cell-has');
+          cell.title = key + ' · ' + ent.length + ' 条';
+          cell.addEventListener('click', function (id) {
+            return function () { window.location.href = '/dream/' + id; };
+          }(ent[0].id));
+        }
+        grid.appendChild(cell);
+      }
+      root.appendChild(grid);
+    } else if (view === 'week') {
+      var mon = mondayOfWeek(anchor);
+      label.textContent = ymd(mon.getFullYear(), mon.getMonth() + 1, mon.getDate()) + ' 起一周';
+      var row = document.createElement('div');
+      row.className = 'cal-week-row';
+      for (var j = 0; j < 7; j++) {
+        var dt = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + j, 12, 0, 0);
+        var ky = ymd(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+        var c = document.createElement('div');
+        c.className = 'cal-week-cell';
+        var en = DAY_MAP[ky] || [];
+        var st = document.createElement('div');
+        st.className = 'cal-cell-strip cal-week-strip';
+        st.style.background = stripeBg(en);
+        c.appendChild(st);
+        var la = document.createElement('div');
+        la.className = 'cal-week-meta';
+        la.textContent = (dt.getMonth() + 1) + '/' + dt.getDate();
+        c.appendChild(la);
+        if (en.length) {
+          c.classList.add('cal-cell-has');
+          c.addEventListener('click', function (id) {
+            return function () { window.location.href = '/dream/' + id; };
+          }(en[0].id));
+        }
+        row.appendChild(c);
+      }
+      root.appendChild(row);
+    } else {
+      label.textContent = y + '年';
+      var wrap = document.createElement('div');
+      wrap.className = 'cal-year-wrap';
+      for (var mo = 1; mo <= 12; mo++) {
+        var box = document.createElement('div');
+        box.className = 'mini-month';
+        var tit = document.createElement('div');
+        tit.className = 'mini-month-title';
+        tit.textContent = mo + '月';
+        box.appendChild(tit);
+        var mg = document.createElement('div');
+        mg.className = 'mini-month-grid';
+        var fd = weekdayMon0(y, mo, 1);
+        var dm = daysInMonth(y, mo);
+        for (var a = 0; a < fd; a++) {
+          var z = document.createElement('div');
+          z.className = 'mini-cell mini-cell-empty';
+          mg.appendChild(z);
+        }
+        for (var dd = 1; dd <= dm; dd++) {
+          var kk = ymd(y, mo, dd);
+          var mc = document.createElement('div');
+          mc.className = 'mini-cell';
+          var en2 = DAY_MAP[kk] || [];
+          mc.style.background = stripeBg(en2);
+          if (en2.length) {
+            mc.classList.add('mini-cell-has');
+            mc.title = kk;
+            mc.addEventListener('click', function (id) {
+              return function () { window.location.href = '/dream/' + id; };
+            }(en2[0].id));
+          }
+          mg.appendChild(mc);
+        }
+        box.appendChild(mg);
+        wrap.appendChild(box);
+      }
+      root.appendChild(wrap);
+    }
+  }
+  render();
+})();
+</script>
+{% endblock %}

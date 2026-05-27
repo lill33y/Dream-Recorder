@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}梦境记录{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="wrap">
+    <nav class="topnav">
+      <a class="nav-link{% if nav_active == 'home' %} is-active{% endif %}" href="{{ url_for('index') }}"{% if nav_active == 'home' %} aria-current="page"{% endif %}>首页</a>
+      {% if current_user %}
+      <a class="nav-link{% if nav_active == 'me' %} is-active{% endif %}" href="{{ url_for('me') }}"{% if nav_active == 'me' %} aria-current="page"{% endif %}>个人主页</a>
+      <form method="post" action="{{ url_for('logout') }}" class="nav-logout-form">
+        <button type="submit" class="nav-link nav-link-btn">登出</button>
+      </form>
+      <span class="nav-user">
+        <img class="nav-avatar" src="{{ current_user.avatar_url }}" alt="" width="32" height="32">
+        <span class="nav-display">{{ current_user.display }}</span>
+        <a class="nav-link nav-tiny" href="{{ url_for('nickname') }}">更改</a>
+      </span>
+      {% else %}
+      <a class="nav-link{% if nav_active == 'login' %} is-active{% endif %}" href="{{ url_for('login') }}">登录</a>
+      <a class="nav-link{% if nav_active == 'register' %} is-active{% endif %}" href="{{ url_for('register') }}">注册</a>
+      {% endif %}
+    </nav>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flash-wrap" role="status">
+        {% for cat, msg in messages %}
+        <div class="flash flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+    {% block body %}{% endblock %}
+  </div>
+</body>
+</html>

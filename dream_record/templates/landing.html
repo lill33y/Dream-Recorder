@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}首页 — 梦境记录{% endblock %}
+{% block body %}
+<div class="card hero-card">
+  <h1>梦境记录</h1>
+  <div class="emotion-intro" role="region" aria-label="梦境颜色与情绪说明">
+    <p class="emotion-intro-lead">每条梦选一种颜色做「心情标签」：下面 20 种颜色对应一份情绪参考，选和你醒来时感受最接近的那一格就好。历史会像色卡一样排开；在个人主页可点进全文与 AI 分析。</p>
+    <div class="emotion-grid">
+      {% for entry in dream_color_palette %}
+      <div class="emotion-card">
+        <span class="emotion-swatch" style="background: {{ entry.hex }};" aria-hidden="true"></span>
+        <span class="emotion-label">{{ entry.emotion }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% if current_user %}
+  <p style="margin:0.75rem 0 0;"><a class="btn secondary" href="{{ url_for('me') }}">个人主页与历史</a></p>
+  {% else %}
+  <p style="margin-top:0.85rem;">
+    <a class="btn" href="{{ url_for('register') }}">注册</a>
+    <a class="btn secondary" href="{{ url_for('login') }}">登录</a>
+  </p>
+  {% endif %}
+</div>
+
+{% if current_user %}
+<div class="card" style="margin-top:1rem;">
+  <h2 style="margin-top:0;">新增一条梦境</h2>
+  <div class="toolbar">
+    <label class="file-btn">上传语音<input type="file" id="file-voice" accept="audio/*,.webm,.wav,.mp3,.m4a,.ogg"></label>
+  </div>
+  <p id="upload-status" class="hint" style="margin-top:0;"></p>
+  <div id="last-audio-wrap" style="display:none;">
+    <span class="muted">刚上传：</span><audio id="last-audio" controls></audio>
+  </div>
+
+  <form method="post" action="{{ url_for('index') }}" id="form-dream" class="stack-form">
+    <p style="margin:0 0 0.65rem;">
+      <label for="dream_on">做梦日期（可补记前几天的梦）</label>
+      <input type="date" id="dream_on" name="dream_on" value="{{ today_dream_on }}" style="max-width:12rem;">
+    </p>
+    <div class="color-row dream-color-field">
+      <span class="color-row-label">这条梦的颜色（点选一格）</span>
+      <input type="hidden" name="dream_color" id="dream_color" value="#87ceeb">
+      <div class="dream-palette-pick" id="dream-palette-pick" role="radiogroup" aria-labelledby="dream-color-caption">
+        {% for entry in dream_color_palette %}
+        <button type="button" class="dream-swatch-btn{% if entry.hex == '#87ceeb' %} is-selected{% endif %}" data-hex="{{ entry.hex }}" data-emotion="{{ entry.emotion }}" data-color-zh="{{ entry.color_zh }}" title="{{ entry.emotion }}" aria-label="{{ entry.emotion }}">
+          <span class="dream-swatch-fill" style="background: {{ entry.hex }};"></span>
+        </button>
+        {% endfor %}
+      </div>
+      <p class="muted dream-color-caption" id="dream-color-caption">当前：<span id="dream-color-caption-text">期待 · 浅蓝色</span></p>
+    </div>
+    <p style="margin:0;"><label for="content">内容</label></p>
+    <textarea id="content" name="content" placeholder="写下梦境…也可先上传语音，链接会插入到文末。" required></textarea>
+    <button type="submit">保存梦境</button>
+  </form>
+</div>
+
+<script>
+(function () {
+  var ta = document.getElementById('content');
+  var uploadStatus = document.getElementById('upload-status');
+  var lastAudioWrap = document.getElementById('last-audio-wrap');
+  var lastAudio = document.getElementById('last-audio');
+  document.getElementById('file-voice').addEventListener('change', function () {
+    var input = this;
+    if (!input.files || !input.files[0]) return;
+    var fd = new FormData();
+    fd.append('file', input.files[0]);
+    uploadStatus.textContent = '正在上传…';
+    fetch('{{ url_for("upload_voice") }}', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        input.value = '';
+        if (data.error) { uploadStatus.textContent = data.error; return; }
+        uploadStatus.textContent = data.message || '上传成功。';
+        if (data.url) {
+          lastAudio.src = data.url;
+          lastAudioWrap.style.display = 'block';
+          ta.value = (ta.value ? ta.value + '\n' : '') + '【已上传语音】' + data.url;
+        }
+      })
+      .catch(function (e) { uploadStatus.textContent = '上传失败：' + e; });
+  });
+
+  var hidden = document.getElementById('dream_color');
+  var cap = document.getElementById('dream-color-caption-text');
+  var pick = document.getElementById('dream-palette-pick');
+  if (hidden && cap && pick) {
+    function paint(btn) {
+      var h = (btn && btn.getAttribute('data-hex')) || hidden.value;
+      var em = (btn && btn.getAttribute('data-emotion')) || '期待';
+      var cz = (btn && btn.getAttribute('data-color-zh')) || '浅蓝色';
+      hidden.value = h;
+      cap.textContent = em + ' · ' + cz;
+      var nodes = pick.querySelectorAll('.dream-swatch-btn');
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].classList.toggle('is-selected', nodes[i].getAttribute('data-hex') === h);
+      }
+    }
+    pick.addEventListener('click', function (e) {
+      var t = e.target;
+      if (t && t.closest) t = t.closest('.dream-swatch-btn');
+      if (!t || !pick.contains(t)) return;
+      paint(t);
+    });
+    var sel = pick.querySelector('.dream-swatch-btn.is-selected');
+    paint(sel || pick.querySelector('.dream-swatch-btn'));
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}
